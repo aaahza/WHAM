@@ -20,6 +20,8 @@ from lib.data.datasets import CustomDataset
 from lib.models import build_network, build_body_model
 from lib.models.preproc.detector import DetectionModel
 from lib.models.preproc.extractor import FeatureExtractor
+from lib.utils.transforms import matrix_to_axis_angle
+
 
 try: 
     from lib.models.preproc.slam import SLAMModel
@@ -109,14 +111,19 @@ class WHAM_API(object):
             pred = self.network(x, inits, features, mask=mask, init_root=init_root, cam_angvel=cam_angvel, return_y_up=True, **kwargs)
             
             # Store results
-            results[_id]['poses_body'] = pred['poses_body'].cpu().squeeze(0).numpy()
-            results[_id]['poses_root_cam'] = pred['poses_root_cam'].cpu().squeeze(0).numpy()
-            results[_id]['betas'] = pred['betas'].cpu().squeeze(0).numpy()
-            results[_id]['verts_cam'] = (pred['verts_cam'] + pred['trans_cam'].unsqueeze(1)).cpu().numpy()
-            results[_id]['poses_root_world'] = pred['poses_root_world'].cpu().squeeze(0).numpy()
-            #checking this shit out
-            results[_id]['pose_world'] = pred['poses_root_world'].cpu().squeeze(0).numpy()
+            pred_body_pose = matrix_to_axis_angle(pred['poses_body']).cpu().numpy().reshape(-1, 69)
+            pred_root = matrix_to_axis_angle(pred['poses_root_cam']).cpu().numpy().reshape(-1, 3)
+            pred_root_world = matrix_to_axis_angle(pred['poses_root_world']).cpu().numpy().reshape(-1, 3)
+            pred_pose = np.concatenate((pred_root, pred_body_pose), axis=-1)
+            pred_pose_world = np.concatenate((pred_root_world, pred_body_pose), axis=-1)
+            pred_trans = (pred['trans_cam'] - self.network.output.offset).cpu().numpy()
+            
+            results[_id]['pose'] = pred_pose
+            results[_id]['trans'] = pred_trans
+            results[_id]['pose_world'] = pred_pose_world
             results[_id]['trans_world'] = pred['trans_world'].cpu().squeeze(0).numpy()
+            results[_id]['betas'] = pred['betas'].cpu().squeeze(0).numpy()
+            results[_id]['verts'] = (pred['verts_cam'] + pred['trans_cam'].unsqueeze(1)).cpu().numpy()
             results[_id]['frame_ids'] = frame_id
         
         joblib.dump(slam_results, osp.join(output_dir, 'wham_results.pth'))

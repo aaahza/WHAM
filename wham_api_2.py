@@ -115,7 +115,7 @@ class WHAM_API(object):
             results[_id]['verts_cam'] = (pred['verts_cam'] + pred['trans_cam'].unsqueeze(1)).cpu().numpy()
             results[_id]['poses_root_world'] = pred['poses_root_world'].cpu().squeeze(0).numpy()
             results[_id]['trans_world'] = pred['trans_world'].cpu().squeeze(0).numpy()
-            results[_id]['frame_id'] = frame_id
+            results[_id]['frame_ids'] = frame_id
         
         joblib.dump(slam_results, osp.join(output_dir, 'wham_results.pth'))
         return results

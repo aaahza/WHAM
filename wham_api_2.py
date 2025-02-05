@@ -21,6 +21,7 @@ from lib.models import build_network, build_body_model
 from lib.models.preproc.detector import DetectionModel
 from lib.models.preproc.extractor import FeatureExtractor
 from lib.utils.transforms import matrix_to_axis_angle
+from lib.utils.imutils import avg_preds
 
 
 try: 
@@ -102,15 +103,43 @@ class WHAM_API(object):
         n_subjs = len(dataset)
 
         for subj in range(n_subjs):
-            batch = dataset.load_data(subj)
-            if batch is None: break
-
-            _id, x, inits, features, mask, init_root, cam_angvel, frame_id, kwargs = batch
+            with torch.no_grad():
+                if self.cfg.FLIP_EVAL:
+                    # Forward pass with flipped input
+                    flipped_batch = dataset.load_data(subj, True)
+                    _id, x, inits, features, mask, init_root, cam_angvel, frame_id, kwargs = flipped_batch
+                    flipped_pred = self.network(x, inits, features, mask=mask, init_root=init_root, cam_angvel=cam_angvel, return_y_up=True, **kwargs)
+                    
+                    # Forward pass with normal input
+                    batch = dataset.load_data(subj)
+                    _id, x, inits, features, mask, init_root, cam_angvel, frame_id, kwargs = batch
+                    pred = self.network(x, inits, features, mask=mask, init_root=init_root, cam_angvel=cam_angvel, return_y_up=True, **kwargs)
+                    
+                    # Merge two predictions
+                    flipped_pose, flipped_shape = flipped_pred['pose'].squeeze(0), flipped_pred['betas'].squeeze(0)
+                    pose, shape = pred['pose'].squeeze(0), pred['betas'].squeeze(0)
+                    flipped_pose, pose = flipped_pose.reshape(-1, 24, 6), pose.reshape(-1, 24, 6)
+                    avg_pose, avg_shape = avg_preds(pose, shape, flipped_pose, flipped_shape)
+                    avg_pose = avg_pose.reshape(-1, 144)
+                    avg_contact = (flipped_pred['contact'][..., [2, 3, 0, 1]] + pred['contact']) / 2
+                    
+                    # Refine trajectory with merged prediction
+                    self.network.pred_pose = avg_pose.view_as(self.network.pred_pose)
+                    self.network.pred_shape = avg_shape.view_as(self.network.pred_shape)
+                    self.network.pred_contact = avg_contact.view_as(self.network.pred_contact)
+                    output = self.network.forward_smpl(**kwargs)
+                    pred = self.network.refine_trajectory(output, cam_angvel, return_y_up=True)
+                
+                else:
+                    # data
+                    batch = dataset.load_data(subj)
+                    _id, x, inits, features, mask, init_root, cam_angvel, frame_id, kwargs = batch
+                    
+                    # inference
+                    pred = self.network(x, inits, features, mask=mask, init_root=init_root, cam_angvel=cam_angvel, return_y_up=True, **kwargs)
             
-            # inference
-            pred = self.network(x, inits, features, mask=mask, init_root=init_root, cam_angvel=cam_angvel, return_y_up=True, **kwargs)
             
-            # Store results
+            # ========= Store results ========= #
             pred_body_pose = matrix_to_axis_angle(pred['poses_body']).cpu().numpy().reshape(-1, 69)
             pred_root = matrix_to_axis_angle(pred['poses_root_cam']).cpu().numpy().reshape(-1, 3)
             pred_root_world = matrix_to_axis_angle(pred['poses_root_world']).cpu().numpy().reshape(-1, 3)

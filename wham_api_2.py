@@ -114,6 +114,8 @@ class WHAM_API(object):
             results[_id]['betas'] = pred['betas'].cpu().squeeze(0).numpy()
             results[_id]['verts_cam'] = (pred['verts_cam'] + pred['trans_cam'].unsqueeze(1)).cpu().numpy()
             results[_id]['poses_root_world'] = pred['poses_root_world'].cpu().squeeze(0).numpy()
+            #checking this shit out
+            results[_id]['pose_world'] = pred['poses_root_world'].cpu().squeeze(0).numpy()
             results[_id]['trans_world'] = pred['trans_world'].cpu().squeeze(0).numpy()
             results[_id]['frame_ids'] = frame_id
         

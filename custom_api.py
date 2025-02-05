@@ -7,9 +7,12 @@ def run_command(command):
     print(f"Error: {result.stderr}")
 
 # Create and start thread
-command = "ls -l"  # Example command
+command = "python demo.py --video example/clip.mov --visualize"  # Example command
 thread = threading.Thread(target=run_command, args=(command,))
 thread.start()
 
 # Wait for thread to complete
 thread.join()
+
+command = "ls /output/demo/clip"
+run_command(command)
